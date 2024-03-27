@@ -11,9 +11,6 @@ from micro_agent import MicroAgent
 
 load_dotenv()
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_CES_ID = os.getenv("GOOGLE_CES_ID")
-
 BASE_PROMPT = """你是一名google工程师，非常擅长应用google搜索的各种高级功能。
 你能够根据我的意图，帮我写出最佳的google搜索词，并调用tool_google_search方法来获得结果，并结合我的需求和搜索结果来回答我的需求：例如：
 我的需求是帮我查询HONG KONG YC DIGITAL TECHNOLOGY公司是否有任何涉及加密货币、高利贷、等违法问题。"
@@ -22,11 +19,11 @@ BASE_PROMPT = """你是一名google工程师，非常擅长应用google搜索的
 ['香港鈺程數字技術有限公司 https://www.ycdigitals.com/ 香港鈺程數字技術有限公司. HONG KONG YC DIGITAL TECHNOLOGY LIMITED. 是一家技术驱动发展的国际化智能营销服务公司，致力于为客户提供全球营销推广服务，通过效果营销 ...',]
 然后你结合搜索结果和我的疑问回答我："根据搜索结果，并未发现该公司有任何涉及加密货币、高利贷、等违法问题。"
 请注意，如果公司名字为中文，或者名字中出现HONG KONG，请同时搜索中文内容。
-"""
+""".strip()
 
 
-def google_search(query: str, num: int = 3, api_key=GOOGLE_API_KEY,
-                  ces_id=GOOGLE_CES_ID) -> Optional[Dict]:
+def google_search(query: str, num: int = 3, api_key=None,
+                  ces_id=None) -> Optional[Dict]:
     """
     调用google search api获取信息
     :param ces_id:
@@ -36,6 +33,8 @@ def google_search(query: str, num: int = 3, api_key=GOOGLE_API_KEY,
     :return: 查询结果
     """
     # 检查api_key和ces_id是否存在
+    api_key = api_key or os.getenv("GOOGLE_API_KEY")
+    ces_id = ces_id or os.getenv("GOOGLE_CES_ID")
     if not api_key or not ces_id:
         logging.error(
             "Google Custom Search API key or Custom Search Engine ID not found")

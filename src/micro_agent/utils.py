@@ -2,13 +2,11 @@
 import inspect
 import logging
 import random
-from typing import Callable, Any
+from typing import Any, Callable
 
 import pydantic
 import tiktoken
 from pydantic import BaseModel
-
-from micro_agent.config import MAX_TOKEN_LENGTH
 
 
 # 随机生成一个英文姓名，用于命名代理
@@ -101,28 +99,93 @@ def merge(base_model_1: BaseModel, base_model_2: BaseModel) -> BaseModel:
         raise e
 
 
-def num_tokens_from_messages(messages: list,
-                             model: str = "gpt-3.5-turbo") -> int:
+def num_tokens_from_messages(messages: list, model="pgt-3.5-turbo-0613"):
     """Returns the number of tokens used by a list of messages."""
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
         encoding = tiktoken.get_encoding("cl100k_base")
     logging.debug(f"Encoding for model {model}: {encoding}")
-    if model in MAX_TOKEN_LENGTH:  # note: future models may deviate from this
-        num_tokens = 1
-        for message in messages:
-            num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-            for key, value in message.items():
-                num_tokens += len(encoding.encode(value))
-                if key == "name":  # if there's a name, the role is omitted # 实测没有这项目规则
-                    num_tokens += -1  # role is always required and always 1 token
-        num_tokens += 2  # every reply is primed with <im_start>assistant
-        return num_tokens
+    if model in {
+        "gpt-3.5-turbo-0613",
+        "gpt-3.5-turbo-16k-0613",
+        "gpt-4-0314",
+        "gpt-4-32k-0314",
+        "gpt-4-0613",
+        "gpt-4-32k-0613",
+    }:  # note: future models may deviate from this
+        tokens_per_message = 3
+        tokens_per_name = 1
+    elif model == "gpt-3.5-turbo-0301":
+        tokens_per_message = 4
+        tokens_per_name = -1
+    elif "gpt-3.5-turbo" in model:
+        return num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613")
+    elif "gpt-4" in model:
+        return num_tokens_from_messages(messages, model="gpt-4-0613")
     else:
         raise NotImplementedError(
-            f"""num_tokens_from_messages() is not presently implemented for model {model}.
-  See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens.""")
+            f"Model {model} not supported for token counting."
+        )
+    num_tokens = 0
+    for message in messages:
+        num_tokens += tokens_per_message
+        for key, value in message.items():
+            if key not in ("role", "name", "content"):
+                continue
+            if value is None:
+                value = ""
+            num_tokens += len(encoding.encode(value))
+            if key == "name":
+                num_tokens += tokens_per_name
+    num_tokens += 3
+    return num_tokens
+
+
+#     num_tokens = 1
+#     for message in messages:
+#         num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+#         for key, value in message.items():
+#             print(f"key: {key}, value: {value}")
+#             if value is None:
+#                 value = ""
+#             if isinstance(value, list):
+#                 value = json.dumps(value)
+#             num_tokens += len(
+#                 encoding.encode(value)) + 1  # add 1 for the newline
+#     return num_tokens
+#
+# else:
+# raise ValueError(f"Model {model} not supported for token counting.")
+#
+#
+# def num_tokens_from_messages(messages: list,
+#                              model: str = "gpt-3.5-turbo") -> int:
+#     """Returns the number of tokens used by a list of messages."""
+#     try:
+#         encoding = tiktoken.encoding_for_model(model)
+#     except KeyError:
+#         encoding = tiktoken.get_encoding("cl100k_base")
+#     logging.debug(f"Encoding for model {model}: {encoding}")
+#     if model in MAX_TOKEN_LENGTH:  # note: future models may deviate from this
+#         num_tokens = 1
+#         for message in messages:
+#             num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+#             for key, value in message.items():
+#                 print(f"key: {key}, value: {value}")
+#                 if value is None:
+#                     value = ""
+#                 if isinstance(value, list):
+#                     value = json.dumps(value)
+#                 num_tokens += len(encoding.encode(value))
+#                 if key == "name":  # if there's a name, the role is omitted # 实测没有这项目规则
+#                     num_tokens += -1  # role is always required and always 1 token
+#         num_tokens += 2  # every reply is primed with <im_start>assistant
+#         return num_tokens
+#     else:
+#         raise NotImplementedError(
+#             f"""num_tokens_from_messages() is not presently implemented for model {model}.
+#   See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens.""")
 
 
 def python_type_to_json_schema(python_type: Any) -> str:

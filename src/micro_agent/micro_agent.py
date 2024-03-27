@@ -13,14 +13,18 @@ myAgent 的抽象基类，完成以下功能：
 
 """
 import logging
-from typing import List, Dict, Optional, Callable
+import time
+from typing import List, Dict, Optional, Callable, Iterator
 
+import openai
 from dotenv import load_dotenv
-from openai import OpenAI, OpenAIError
+from openai import OpenAI
 from openai.types.chat.chat_completion import ChatCompletion
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
-from micro_agent.config import MAX_TOKEN_LENGTH, DEFAULT_MODEL, GREEN, RESET
+from micro_agent.config import MAX_TOKEN_LENGTH, DEFAULT_MODEL, GREEN, RESET, \
+    RETRY
 from micro_agent.errors import AgentExecToolError
 from micro_agent.models import Completion
 from micro_agent.utils import generate_function_schema, merge, \
@@ -72,16 +76,20 @@ class MicroAgent:
             raise AgentExecToolError(f"不支持的模型名称：{model}")
         logging.info(f"设置使用的模型：{self.model}")
         self.model: str = model  # 设置使用的模型
+
         self.name: str = generate_random_name() if not name else name  # 代理的名称,如果没传入则随机生成一个
         self.user_name: str = user_name
         self.prompt: str = prompt
+
         self.history_messages: List[
             Completion.Message | ChatCompletionMessage] = []  # 历史对话消息
-        self.max_round: int = max_round  # 最大对话轮数,如果为0，则表示无限对话，直到用户主动结束对话或超出最大对话窗口长度被裁剪。
+        self.max_round_in_message_window: int = max_round  # 消息窗口最大对话轮数,如果为0，则表示无限对话，直到用户主动结束对话或超出最大对话窗口长度被裁剪。不为0，则超过对话轮数的消息会被裁剪
+        self.message_window_round_count = 0  # 当前对话窗口对话轮数
         self.message_windows: Dict[str, int] = {
             "head": 0,
             "tail": 0,
         }  # 用于存储当前消息窗口的头尾指针
+
         self.last_prompt_tokens: int = 0  # 上一次调用api发送的prompt的token数
         self.last_completion_tokens: int = 0  # 上一次调用api一共消耗的token数
         self.last_assistant_response: Optional[
@@ -99,6 +107,8 @@ class MicroAgent:
             MAX_TOKEN_LENGTH[self.model] * self.input_token_ratio)
         self.max_output_token: int = MAX_TOKEN_LENGTH[
                                          self.model] - self.max_input_token
+
+        self.max_retry_times = len(RETRY)
 
         logging.info(
             f"设置输入token的最大长度为：{self.max_input_token},输出token的最大长度为：{self.max_output_token}")
@@ -307,6 +317,60 @@ class MicroAgent:
 
         return message
 
+    def _call_openai_api(self):
+
+        # 调用openAI接口，最多尝试三次
+        attempt = 0
+        while attempt < self.max_retry_times:
+            try:
+                return self.open_ai_client.chat.completions.create(
+                    **self.completion.model_dump(exclude_defaults=True))
+            # 需要报错并中断
+            except (
+                    openai.APIConnectionError,
+                    openai.BadRequestError,
+                    openai.AuthenticationError,
+                    openai.NotFoundError,
+                    openai.PermissionDeniedError,
+            ) as e:
+                logging.error(
+                    f"Open AI API returned an error! can't continue... {e}")
+                raise e
+            # 需要稍后重新尝试的错误
+            except (
+                    openai.APITimeoutError,
+                    openai.ConflictError,
+                    openai.InternalServerError,
+                    openai.RateLimitError,
+                    openai.UnprocessableEntityError
+            ) as e:
+                logging.error(f"OpenAI API returned an API Error: {e}")
+                attempt += 1
+                if attempt == self.max_retry_times:
+                    raise e
+                logging.info(f"{RETRY[attempt]}秒后重试第{attempt}次...")
+                time.sleep(RETRY[attempt])
+
+    @staticmethod
+    def _merge_and_display_stream_chunks(
+            trunks: Iterator[ChatCompletionChunk]) -> ChatCompletionChunk:
+        # 如果是stream模式，则在屏幕上输出每次返回的消息，最终将返回的消息合并成一个
+        logging.info("stream 模式...")
+        response = None
+        for index, trunk in enumerate(trunks):
+            if index == 0:
+                response = trunk.model_copy()  # 用于存储返回的结果
+                # 确保第一条返回结果为空
+                response.choices[0].delta.content = ''
+            if trunk.choices[0].delta.content is not None:
+                print(
+                    f'{GREEN}{trunk.choices[0].delta.content}{RESET}',
+                    end='')
+            response = merge(response, trunk)  # 将返回的一系列trunk合并成一个
+        if response.choices[0].delta.content is not None:
+            print()  # 输出换行
+        return response
+
     def _push_message(
             self,
             message: Completion.Message | ChatCompletionMessage
@@ -436,7 +500,11 @@ class MicroAgent:
 
             if self.history_messages[item].role == "user":
                 self.message_windows["head"] = item
+                self.message_window_round_count -= 1  # 当前消息窗口对话轮数减一
                 break
+        else:  # 如果没找到下一个user信息，则说明窗口中已经没有user信息，此时清空整个窗口
+            self.message_windows['head'] = self.message_windows['tail']
+            self.message_window_round_count = 0
 
     def user_input(
             self,
@@ -468,73 +536,48 @@ class MicroAgent:
         total_content = ''
 
         while True:
-            try:
-                # 创建要发送到openAI的消息
-                msg = self._create_messages()
-                self.completion.messages = msg
+            # 创建要发送到openAI的消息
+            msg = self._create_messages()
+            self.completion.messages = msg
 
-                # 调用openAI的chat api获取返回结果
-                if self.completion.stream:
-                    # 如果是stream模式，则在屏幕上输出每次返回的消息，最终将返回的消息合并成一个
-                    # todo: 计算messages的token
-                    trunks = self.open_ai_client.chat.completions.create(
-                        **self.completion.model_dump(exclude_defaults=True)
-                    )
-                    response = None
-                    used_token = 0  # 用于记录token消耗
-                    for index, trunk in enumerate(trunks):
-                        used_token += 1
-                        if index == 0:
-                            response = trunk.model_copy()  # 用于存储返回的结果
-                            # 确保第一条返回结果为空
-                            response.choices[0].delta.content = ''
-                        if trunk.choices[0].delta.content is not None:
-                            print(
-                                f'{GREEN}{trunk.choices[0].delta.content}{RESET}',
-                                end='')
-                        response = merge(response, trunk)  # 将返回的一系列trunk合并成一个
-                    if response.choices[0].delta.content is not None:
-                        print()  # 输出换行
-                else:
-                    # 直接获取返回消息
-                    response = self.open_ai_client.chat.completions.create(
-                        **self.completion.model_dump(exclude_defaults=True))
-            except OpenAIError as e:
-                logging.error(f"Error calling OpenAI: {e}")
-                raise e
-            logging.debug(response)
+            # 调用openAI接口
+            response = self._call_openai_api()
 
-            # 如果返回的token消耗超过了限制，则裁剪历史消，确保token消耗在限制范围内
-            # stream模式下没有返回token消耗信息，todo: 需要自行计算token消耗
+            # 处理返回结果，如果是stream方式，则需要合并生成的消息
+            if self.completion.stream:
+                response = self._merge_and_display_stream_chunks(response)
+            else:
+                # 直接获取返回消息
+                self.last_prompt_tokens = response.usage.prompt_tokens
+                self.last_completion_tokens = response.usage.total_tokens - self.last_prompt_tokens
+
+            # 如果返回的token消耗超过了限制，则裁剪一条历史消息
+            # 虽然有可能裁剪后prompt_token数还是超限，但最少腾出了一轮对话的空间。
+            # 所以，当你期待llm产生大量回复时，要小心规划prompt_token的比例关系
+            # 注意:stream模式下没有返回token消耗信息,且openAI官方给出的token计算代码不可靠,以下代码不起作用
             if hasattr(response,
                        'usage') and response.usage.total_tokens > self.max_input_token:
                 self.trim_history(reset=False)
 
-            if 0 < self.max_round < self.message_windows["tail"] - \
-                    self.message_windows[
-                        "head"]:
-                self.trim_history(reset=True)
+            # 如果设置了最大对话窗口轮次，则根据窗口轮次进行裁剪
+            # 注意：如果llm返回的stop_reason为tool，或者说tool调用轮次不受窗口最大窗口轮次影响
+            # 也就是说，调用tool发生的交互不单独记为一轮对话
+            while response.choices[0].finish_reason != 'tool_calls' and \
+                    0 < self.max_round_in_message_window < self.message_window_round_count:
+                self.trim_history(reset=False)
 
-            # todo: 针对返回错误信息进行对应的处理
+            choice = response.choices[0]
 
-            choice = response.choices[0] if response.choices else None
-
-            # 保存消耗的token信息
-
-            if not choice:
-                raise RuntimeError("No response from OpenAI")
             # 将返回的消息压入消息队列
-            if self.stream:
-                self.last_assistant_response = choice.delta
-            else:
-                self.last_assistant_response = choice.message
-
+            self.last_assistant_response = choice.delta if self.stream else choice.message
             self._assistant_input(
                 self.last_assistant_response)
-            finish_reason = choice.finish_reason
 
+            # 根据finish_reason分别进行处理
+            finish_reason = choice.finish_reason
             if finish_reason == "stop":
                 total_content += self.last_assistant_response.content
+                self.message_window_round_count += 1
                 return total_content
             elif finish_reason == "tool_calls":
                 logging.info(
@@ -549,27 +592,16 @@ class MicroAgent:
                     )
                     # 将返回值加入消息列表，并重新调用api
                     self._tool_input(function_call_result, tool_call.id)
-                logging.debug("处理完毕，重新调用api")
+                logging.debug("本地api调用处理完毕，重新调用openAI api..")
             elif response.choices[0].finish_reason == "length":
                 total_content += self.last_assistant_response.content
+                self.message_window_round_count += 1
                 self.user_input("请继续")  # 尝试让openai继续回答
             elif choice.finish_reason == "content_filter":
                 logging.warning(
                     f"Warning! content_filter: {self.last_assistant_response.content}")
+                self.message_window_round_count += 1
                 return total_content + choice.message.content
             else:
                 logging.error(f"Error! Unknown finish_reason: ")
                 raise ValueError(f"Error! Unknown finish_reason: ")
-
-
-if __name__ == "__main__":
-    my_agent = MicroAgent()
-    my_agent.stream = True
-    while True:
-        my_agent(input("请输入:"))
-
-    # my_agent.user_input("Hello, I am a robot.")
-    # ret = my_agent.get_answer_from_openai()
-    # for i in ret:
-    #     print(i, end="")
-    #     # print(i.choices[0].delta.content)
