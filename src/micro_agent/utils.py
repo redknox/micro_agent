@@ -1,12 +1,82 @@
 """本模块用于存放公共函数"""
+import base64
 import inspect
+import json
 import logging
 import random
+import re
 from typing import Any, Callable
 
 import pydantic
 import tiktoken
+from genson import SchemaBuilder
+from jsonschema import validate
+from jsonschema.exceptions import ValidationError
 from pydantic import BaseModel
+
+
+# 将图片转换成base64编码
+def image_to_base64(image: bytes) -> str:
+    """
+    将图片转换成base64编码
+    :param image: 图片
+    :return: base64编码
+    """
+    ext = get_image_encoding(image)
+    base64_image = base64.b64encode(image).decode('utf-8')
+    return f"data:{ext};base64,{base64_image}"
+
+
+def extract_json(text: str) -> list:
+    """
+    从文本中提取json
+    :param text: 待提取的文本
+    :return: 提取的json
+    """
+    pattern = r"\{[^{}]*\}"
+    matches = re.findall(pattern, text, re.DOTALL)
+
+    json_objects = []
+    for match in matches:
+        try:
+            json_object = json.loads(match)
+            json_objects.append(json_object)
+        except json.JSONDecodeError as e:
+            print(f'json解析失败 {e}')
+
+    return json_objects
+
+
+# 从json样例文件创建jsonschema
+def create_jsonschema_from_example(example: [str, dict]) -> dict:
+    """
+    从json样例文件创建jsonschema
+    :param example: json样例文件
+    :return: jsonschema
+    """
+    if isinstance(example, str):
+        example = json.loads(example)
+    builder = SchemaBuilder()
+    builder.add_object(example)
+    jsonschema = builder.to_schema()
+    if "$schema" in jsonschema:
+        del jsonschema["$schema"]
+    return jsonschema
+
+
+# 验证一个json是否符合jsonschema
+def validate_json(json_data: dict, schema: dict) -> bool:
+    """
+    验证一个json是否符合jsonschema
+    :param json_data: 待验证的json数据
+    :param schema: jsonschema
+    :return: 是否符合jsonschema
+    """
+    try:
+        validate(json_data, schema)
+        return True
+    except ValidationError:
+        return False
 
 
 # 随机生成一个英文姓名，用于命名代理
@@ -59,8 +129,9 @@ def merge(base_model_1: BaseModel, base_model_2: BaseModel) -> BaseModel:
         elif isinstance(value1, list) and isinstance(value2, list):
             # 如果两个属性都是list，则检查大小是否一致
             if len(value1) != len(value2):
-                raise ValueError(
-                    f"List sizes of attribute '{field_name}' do not match.")
+                merged_data[
+                    field_name] = value1 if value1 is not None else value2
+                continue  # 如果大小不一致，则不合并
             merged_list = []
             for item1, item2 in zip(value1, value2):
                 # 如果列表项是BaseModel的实例，则递归合并
@@ -95,7 +166,8 @@ def merge(base_model_1: BaseModel, base_model_2: BaseModel) -> BaseModel:
     try:
         return type(base_model_1)(**merged_data)
     except pydantic.ValidationError as e:
-        logging.error(f"将数据转换成对象时发生错误：{type(base_model_1)} {merged_data}")
+        logging.error(
+            f"将数据转换成对象时发生错误：{type(base_model_1)} {merged_data}")
         raise e
 
 
@@ -140,52 +212,6 @@ def num_tokens_from_messages(messages: list, model="pgt-3.5-turbo-0613"):
                 num_tokens += tokens_per_name
     num_tokens += 3
     return num_tokens
-
-
-#     num_tokens = 1
-#     for message in messages:
-#         num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-#         for key, value in message.items():
-#             print(f"key: {key}, value: {value}")
-#             if value is None:
-#                 value = ""
-#             if isinstance(value, list):
-#                 value = json.dumps(value)
-#             num_tokens += len(
-#                 encoding.encode(value)) + 1  # add 1 for the newline
-#     return num_tokens
-#
-# else:
-# raise ValueError(f"Model {model} not supported for token counting.")
-#
-#
-# def num_tokens_from_messages(messages: list,
-#                              model: str = "gpt-3.5-turbo") -> int:
-#     """Returns the number of tokens used by a list of messages."""
-#     try:
-#         encoding = tiktoken.encoding_for_model(model)
-#     except KeyError:
-#         encoding = tiktoken.get_encoding("cl100k_base")
-#     logging.debug(f"Encoding for model {model}: {encoding}")
-#     if model in MAX_TOKEN_LENGTH:  # note: future models may deviate from this
-#         num_tokens = 1
-#         for message in messages:
-#             num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-#             for key, value in message.items():
-#                 print(f"key: {key}, value: {value}")
-#                 if value is None:
-#                     value = ""
-#                 if isinstance(value, list):
-#                     value = json.dumps(value)
-#                 num_tokens += len(encoding.encode(value))
-#                 if key == "name":  # if there's a name, the role is omitted # 实测没有这项目规则
-#                     num_tokens += -1  # role is always required and always 1 token
-#         num_tokens += 2  # every reply is primed with <im_start>assistant
-#         return num_tokens
-#     else:
-#         raise NotImplementedError(
-#             f"""num_tokens_from_messages() is not presently implemented for model {model}.
-#   See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens.""")
 
 
 def python_type_to_json_schema(python_type: Any) -> str:
@@ -289,6 +315,8 @@ def generate_function_schema(func: Callable) -> dict:
         annotation_type = python_type_to_json_schema(
             param.annotation) if param.annotation != inspect.Parameter.empty else 'none'
 
+        if name == 'self':
+            continue
         properties[name] = {
             "type": annotation_type,
             "description": param_descriptions.get(name, "")
@@ -368,3 +396,20 @@ def content_str(content: list[dict[str, Any]] | str | None) -> str:
         return "\n".join(
             [f"{item['role']}: {item['content']}" for item in content])
     raise ValueError(f"Invalid content type: {type(content)}")
+
+
+# 获取图片编码格式
+def get_image_encoding(image: bytes) -> str:
+    """
+    获取图片编码格式
+    :param image: 图片
+    :return: 图片编码格式
+    """
+    if image.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'image/png'
+    elif image.startswith(b'\xff\xd8\xff'):
+        return 'image/jpeg'
+    elif image.startswith(b'GIF87a') or image.startswith(b'GIF89a'):
+        return 'image/gif'
+    else:
+        raise ValueError("Unsupported image format")

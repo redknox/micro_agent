@@ -1,6 +1,8 @@
+import json
 import unittest
 
-from micro_agent.utils import num_tokens_from_messages
+from micro_agent.core.utils import num_tokens_from_messages, \
+    create_jsonschema_from_example, validate_json, extract_json, get_image_encoding
 
 messages = [
     {
@@ -20,21 +22,21 @@ messages = [
      "name": 'user'
      },  # 450
     {
-     "content": None,
-     "role": 'assistant',
-     "function_call": None,
-     "tool_calls":
-         [
-             {
-                 # "id": 'call_QDEnP3bBGkzaKKMVIHysVKdj',
-                 "function": {
-                     "arguments": '{"query":"official website of Python"}',
-                     "name": 'tool_google_search'
-                 },
-                 # "type": 'function'
-             }
-         ]
-     },  # 18
+        "content": None,
+        "role": 'assistant',
+        "function_call": None,
+        "tool_calls":
+            [
+                {
+                    # "id": 'call_QDEnP3bBGkzaKKMVIHysVKdj',
+                    "function": {
+                        "arguments": '{"query":"official website of Python"}',
+                        "name": 'tool_google_search'
+                    },
+                    # "type": 'function'
+                }
+            ]
+    },  # 18
     {
         # "content": '[{"title": "Welcome to Python.org", "snippet": "The official home of the Python Programming Language."}, {"title": "The Python Tutorial \\u2014 Python 3.12.2 documentation", "snippet": "Python is an easy to learn, powerful programming language ... site, https://www ... This page is licensed under the Python Software Foundation License Version 2."}, {"title": "Download Python | Python.org", "snippet": "The official home of the Python Programming Language. ... This site hosts the \\"traditional\\" implementation of Python (nicknamed CPython). ... There is also a\\u00a0..."}, {"title": "Python Docs", "snippet": "This is the official documentation for Python 3.12. ... For C/C++ programmers. Python\'s C API C API ... This page is licensed under the Python Software Foundation\\u00a0..."}, {"title": "Python For Beginners | Python.org", "snippet": "The official home of the Python Programming Language. ... There is a list of tutorials suitable for experienced programmers on the BeginnersGuide/Tutorials page."}, {"title": "What are the best websites to learn Python? I found that the official ...", "snippet": "Mar 31, 2013 ... \\u201cCodeacademy. com\\u201d is the best website to learn python from ground. This website has a course of python. First sign up on this site and start\\u00a0..."}, {"title": "Eric IDE documentation? - Python Help - Discussions on Python.org", "snippet": "Jan 31, 2020 ... ... Python programming language itself. That being said, I did find the following page on their official website for the Eric IDE: The Eric Python\\u00a0..."}, {"title": "pandas - Python Data Analysis Library", "snippet": "built on top of the Python programming language. Install pandas now! Getting ... Documentation (web) \\u00b7 Download source code. Follow us. Recommended books. Python\\u00a0..."}, {"title": "Python", "snippet": "r/Python: The official Python community for Reddit! Stay up to date with the latest news, packages, and meta information relating to the Python\\u2026"}, {"title": "Python (programming language) - Wikipedia", "snippet": "While Python 2.7 and older is officially unsupported, a different unofficial Python implementation, PyPy, continues to support Python 2, i.e. \\"2.7.18+\\" (plus\\u00a0..."}]',
         "content": '[{"title": "Welcome to Python.org", "snippet": "The official home of the Python Programming Language."}, {"title": "The Python Tutorial \\u2014 Python 3.12.2 documentation", "snippet": "The Python interpreter and the extensive standard library are freely available in source or binary form for all major platforms from the Python web site\\u00a0..."}, {"title": "Download Python | Python.org", "snippet": "The official home of the Python Programming Language."}, {"title": "Free Download | Anaconda", "snippet": "Anaconda\'s open-source Distribution is the easiest way to perform Python/R data science and machine learning on a single machine."}, {"title": "pandas - Python Data Analysis Library", "snippet": "pandas. pandas is a fast, powerful, flexible and easy to use open source data analysis and manipulation tool, built on top of the Python programming\\u00a0..."}, {"title": "Anaconda: Unleash AI Innovation and Value", "snippet": "Accelerate growth efficiently for everyone with the AI and data science experts."}, {"title": "PyCharm: The Python IDE for data science and web development by ...", "snippet": "Our website uses some cookies and records your IP address for the purposes of accessibility, security, and managing your access to the telecommunication network\\u00a0..."}, {"title": "PyPI \\u00b7 The Python Package Index", "snippet": "The Python Package Index (PyPI) is a repository of software for the Python programming language."}, {"title": "Is this the official Python Facebook page / group? - PSF ...", "snippet": "Nov 22, 2022 ... For those who are new to python programming who would like to learn first log in to the official website. www.python.org Tutorial -..."}, {"title": "Django: The web framework for perfectionists with deadlines", "snippet": "Django is a high-level Python web framework that encourages rapid development and clean, pragmatic design. ... Join the Django Discord Community; Official Django\\u00a0..."}]',
@@ -51,9 +53,30 @@ messages = [
 
 
 class MyTestCase(unittest.TestCase):
+
+    def test_get_image_encoding(self):
+        with open('asuka.png', 'rb') as f:
+            image_message = f.read()
+        image_content = get_image_encoding(image_message)
+        print(image_content)
+        # print(len(image_content))
+        # self.assertEqual(len(image_content), 137621)
+
+    def test_extract_json(self):
+        test_json = '我们一起说 {"name": "John", "age": 30, "city": "New York"} 吧'
+        self.assertEqual(extract_json(test_json), [
+            json.loads('{"name": "John", "age": 30, "city": "New York"}')])
+
+    def test_create_jsonschema_from_example(self):
+        test_json = '{"name": "John", "age": 30, "city": "New York"}'
+        schema = create_jsonschema_from_example(test_json)
+        print(schema)
+        self.assertTrue(validate_json(json.loads(test_json), schema))
+
     def test_num_token(self):
         for message in messages:
-            print(num_tokens_from_messages([message],model="gpt-4-turbo-preview"))
+            print(num_tokens_from_messages([message],
+                                           model="gpt-4-turbo-preview"))
         # self.assertEqual(True, False)  # add assertion here
 
 

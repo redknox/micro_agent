@@ -1,0 +1,8 @@
+# Include the README file
+include README.md
+
+# Include the core and the modules source files
+graft src/micro_agent
+
+# Exclude the tests
+prune tests

@@ -7,7 +7,7 @@ from typing import Optional, Dict
 import requests
 from dotenv import load_dotenv
 
-from micro_agent import MicroAgent
+from micro_agent import MicroAgent, set_tool
 
 load_dotenv()
 
@@ -59,7 +59,8 @@ class GoogleSearchAgent(MicroAgent):
         self.prompt = BASE_PROMPT
 
     @staticmethod
-    def tool_google_search(query: str) -> str:
+    @set_tool
+    def google_search(query: str) -> str:
         """
         使用查询字符串通过google search api查询
         :param query: 待搜索的字符串
@@ -77,8 +78,10 @@ class GoogleSearchAgent(MicroAgent):
 
 
 if __name__ == "__main__":
-    mg = GoogleSearch()
-    print(mg)
-    mg.user_input("大模型 claude 的官网网址是？")
-    ret = mg.create()
-    print(ret)
+    mg = GoogleSearchAgent()
+    mg.steam = True
+    mg.stream_options = True
+    # mg.user_input("大模型 claude 的官网网址是？")
+    # ret = mg.create()
+    # print(ret)
+    print(mg("大模型 claude 的官网网址是？"))

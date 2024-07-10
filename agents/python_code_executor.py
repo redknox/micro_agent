@@ -1,4 +1,11 @@
-"""本模块用定义一个可以在Docker中执行传入代码的Agent"""
+"""
+本模块用定义一个可以在Docker中执行传入代码的Agent
+
+todo：保持一个容器运行，每次执行代码时，不需要重新创建容器
+todo：指定一个requirements.txt文件，可以预先安装需要的库，避免每次安装库
+todo：可以指定python版本，下载对应的镜像
+todo：可以指定一个项目，将代码放入项目中执行 ->
+"""
 import ast
 import logging
 import uuid
@@ -6,9 +13,9 @@ from typing import List
 
 import docker
 import requests.exceptions
-from docker.errors import APIError, ImageNotFound, NotFound, ContainerError
+from docker.errors import APIError, ImageNotFound
 
-from micro_agent import MicroAgent
+from micro_agent import MicroAgent, set_tool
 
 PYTHON_IMG_NAME = 'python:latest'
 BASE_PROMPT = """
@@ -16,12 +23,12 @@ BASE_PROMPT = """
 需要调试的代码位于本段落最后，用三个反引号```包裹。
 第一步：请先阅读源代码，判断如果正常执行，返回值会是怎样。
 例如，源代码为"print('hello world')",则输出应该为"hello world"。
-第二步：请调用tool_exec_python_code方法，执行这段代码，获得执行的结果。
+第二步：请调用exec_python_code方法，执行这段代码，获得执行的结果。
 第三部：请分析执行结果，如果执行报错，请根据报错信息进行分析：
-    如果错误原因是运行环境中缺少某个库，请调用tool_install_runtime_lib工具进行安装。
+    如果错误原因是运行环境中缺少某个库，请调用install_runtime_lib工具进行安装。
     如果是代码本身有问题，则请直接对代码进行修改，并将修改后的代码用save_code()进行保存。
         如果你生成的代码保存失败，请根据save_code()返回的错误信息再次修改代码。
-然后再次回到第二步。重复上面的步骤，直到程序测试无误，或者出现的错误无法通过添加库或修改代码来实现。如：调用的接口不通、读取的文件不存在、代码中用的库通过tool_install_runtime_lib工具安装失败等。
+然后再次回到第二步。重复上面的步骤，直到程序测试无误，或者出现的错误无法通过添加库或修改代码来实现。如：调用的接口不通、读取的文件不存在、代码中用的库通过install_runtime_lib工具安装失败等。
 如果代码调试无误，请返回"代码调试成功！"
 如果无法调试，则返回"无法调试！"
 以下用三个反引号包裹的内容为需要调试的代码。这些内容会随着你对代码的修改而变动。
@@ -39,7 +46,7 @@ class CodeExecutor(MicroAgent):
         self.base_prompt: str = BASE_PROMPT
         self.code: str = ''
 
-        if code and self.tool_save_code(code) != 'success':
+        if code and self.save_code(code) != 'success':
             raise ValueError("传入的代码不是python 代码！")
 
         self.container_name: str = str(
@@ -90,19 +97,20 @@ class CodeExecutor(MicroAgent):
         except APIError as e:
             raise RuntimeError(f"无法通过镜像{PYTHON_IMG_NAME}创建容器！{e}")
 
-    def __del__(self):
-        """
-        析构函数，清理代码调试时使用的容器
-        :return:
-        """
-        try:
-            self.container.stop()
-            self.container.remove()
-            logging.info("容器已经删除！")
-        except [APIError, NotFound, ContainerError] as e:
-            logging.warning(f"删除容器失败！{e}")
+    # def __del__(self):
+    #     """
+    #     析构函数，清理代码调试时使用的容器
+    #     :return:
+    #     """
+    #     try:
+    #         self.container.stop()
+    #         self.container.remove()
+    #         logging.info("容器已经删除！")
+    #     except Exception as e:
+    #         logging.warning(f"删除容器失败！{e}")
 
-    def tool_save_code(self, code: str) -> str:
+    @set_tool
+    def save_code(self, code: str) -> str:
         """
         保存修改后的代码。执行后会修改system提示词中包含的代码部分。
         :param code: 需要保存的代码信息
@@ -118,7 +126,8 @@ class CodeExecutor(MicroAgent):
             print(e)
             return f'failure:{e}'
 
-    def tool_install_runtime_lib(self, lib: str) -> str:
+    @set_tool
+    def install_runtime_lib(self, lib: str) -> str:
         """
         安装python开发环境需要的模块。
         :param lib:模块的名称
@@ -127,9 +136,11 @@ class CodeExecutor(MicroAgent):
         # 构建安装库和执行代码的命令
         if lib is not None:
             pip_install_cmd = ['pip', 'install', lib]
+            logging.info(f"安装库{lib}中...")
             return self.exec_command(pip_install_cmd)
 
-    def tool_exec_python_code(self, code: str) -> str:
+    @set_tool
+    def exec_python_code(self, code: str) -> str:
         """
         在开发环境中执行输入的代码
         :param code: 待执行的python代码
@@ -156,6 +167,7 @@ class CodeExecutor(MicroAgent):
             output = self.docker_client.api.exec_start(
                 exec_id=exec_instance['Id']
             )
+            logging.info(f"执行命令{command} 结果:{output.decode('utf-8')}")
             return output.decode('utf-8')
 
         except APIError as e:
@@ -173,6 +185,18 @@ class CodeExecutor(MicroAgent):
         ret = self.create()
         print(ret)
 
+    def delete_container(self):
+        """
+        删除容器
+        :return:
+        """
+        try:
+            self.container.stop()
+            self.container.remove()
+            logging.info("容器已经删除！")
+        except Exception as e:
+            logging.warning(f"删除容器失败！{e}")
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -180,9 +204,10 @@ if __name__ == "__main__":
 load_dotenv()
 """
     ta = CodeExecutor()
-    ta.tool_save_code(python_code)
+    ta.save_code(python_code)
     ta.debug_code()
-    print(f"\n```\n{ta.code}\n```")
+    print(f"最终通过测试的代码为：\n```python\n{ta.code}\n```")
+    ta.delete_container()
     # re = ta.install_runtime_lib('requests')
     # print(re)
     # python_code = "print('hello world')"

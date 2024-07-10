@@ -6,8 +6,10 @@ from micro_agent.agents import GoogleSearchAgent
 class MyTestCase(unittest.TestCase):
     def test_something(self):
         agent = GoogleSearchAgent()
+        agent.stream = True
+        agent.stream_options = True
         print(agent)
-        re = agent("openAI chat API 如何计算tool_calls 的token？")
+        re = agent("邓超和孙俪是哪年结婚的？")
         print(re)
         print()
         # self.assertEqual(True, False)  # add assertion here
