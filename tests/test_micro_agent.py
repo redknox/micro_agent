@@ -1,13 +1,13 @@
 import logging
 import unittest
 
-from micro_agent import MicroAgent
+from wee_agent import WeeAgent
 
 
 class MyTestCase(unittest.TestCase):
     # 测试gpt4v
     def test_image(self):
-        test_agent = MicroAgent(
+        test_agent = WeeAgent(
             name='test_agent',
             model='gpt-4o',
             prompt='你是一名优秀的前端开发人员，擅长根据设计师设计的原型图，编写前端的html+css+js代码。请根据以下设计图，编写html+css代码。',
@@ -21,7 +21,7 @@ class MyTestCase(unittest.TestCase):
 
     def test_init(self):
         logging.basicConfig(level=logging.INFO)
-        test_agent = MicroAgent(
+        test_agent = WeeAgent(
             name='test_agent',
             user_name='test_user',
             model='gpt-4o',
@@ -40,7 +40,7 @@ class MyTestCase(unittest.TestCase):
             # print(ret)
 
     def test_token_control(self):
-        test_agent = MicroAgent(
+        test_agent = WeeAgent(
             name='test_agent',
             user_name='test_user',
             model='gpt-4o',
@@ -59,7 +59,7 @@ class MyTestCase(unittest.TestCase):
             print(test_agent)
 
     def test_draw_image(self):
-        test_agent = MicroAgent(
+        test_agent = WeeAgent(
             name='test_agent',
             user_name='test_user',
             model='gpt-4o',

@@ -1,6 +1,6 @@
 import unittest
 
-from micro_agent.agents import GoogleSearchAgent
+from wee_agent.agents import GoogleSearchAgent
 
 
 class MyTestCase(unittest.TestCase):

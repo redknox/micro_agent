@@ -15,7 +15,7 @@ import docker
 import requests.exceptions
 from docker.errors import APIError, ImageNotFound
 
-from micro_agent import MicroAgent, set_tool
+from wee_agent import WeeAgent, set_tool
 
 PYTHON_IMG_NAME = 'python:latest'
 BASE_PROMPT = """
@@ -35,7 +35,7 @@ BASE_PROMPT = """
 ``` ```"""
 
 
-class CodeExecutor(MicroAgent):
+class CodeExecutor(WeeAgent):
     def __init__(self, *args, code="", **kwargs):
         if 'name' not in kwargs:
             kwargs['name'] = 'CodeDebugger'

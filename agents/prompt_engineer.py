@@ -1,6 +1,6 @@
 """本末模块生成一个提示词工程师代理"""
 
-from micro_agent import MicroAgent
+from wee_agent import WeeAgent
 
 BASE_PROMPT = """你是一名提示词工程师，非常擅长根据用户的需求，生成最佳的提示词。
 
@@ -48,7 +48,7 @@ Workflows
 >>>
 """.strip()
 
-prompt_engineer = MicroAgent(
+prompt_engineer = WeeAgent(
     name='prompt_engineer',
     prompt=BASE_PROMPT,
     model='gpt-4o',

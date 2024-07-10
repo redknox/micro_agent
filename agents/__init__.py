@@ -1,1 +1,1 @@
-from micro_agent.agents.google_search import GoogleSearchAgent
+from wee_agent.agents.google_search import GoogleSearchAgent

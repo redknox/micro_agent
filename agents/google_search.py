@@ -7,7 +7,7 @@ from typing import Optional, Dict
 import requests
 from dotenv import load_dotenv
 
-from micro_agent import MicroAgent, set_tool
+from wee_agent import WeeAgent, set_tool
 
 load_dotenv()
 
@@ -53,7 +53,7 @@ def google_search(query: str, num: int = 3, api_key=None,
         return None
 
 
-class GoogleSearchAgent(MicroAgent):
+class GoogleSearchAgent(WeeAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.prompt = BASE_PROMPT

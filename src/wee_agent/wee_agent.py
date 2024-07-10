@@ -15,19 +15,19 @@ from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
-from micro_agent.utils import image_to_base64
-from micro_agent.config import MAX_TOKEN_LENGTH, DEFAULT_MODEL, GREEN, \
+from wee_agent.utils import image_to_base64
+from wee_agent.config import MAX_TOKEN_LENGTH, DEFAULT_MODEL, GREEN, \
     RESET, RETRY
-from micro_agent.errors import AgentExecToolError, RegisterToolError
-from micro_agent.models import Completion
-from micro_agent.utils import generate_function_schema, merge, \
+from wee_agent.errors import AgentExecToolError, RegisterToolError
+from wee_agent.models import Completion
+from wee_agent.utils import generate_function_schema, merge, \
     generate_random_name
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MicroAgent", "set_tool"]
+__all__ = ["WeeAgent", "set_tool"]
 
 
 def set_tool(method: Callable) -> Callable:
@@ -40,7 +40,7 @@ def set_tool(method: Callable) -> Callable:
     return method
 
 
-class MicroAgent:
+class WeeAgent:
     completion_model: dict = Completion(messages=[],
                                         model=DEFAULT_MODEL).model_dump()  # 用于存储模型的配置信息
 
@@ -501,7 +501,7 @@ class MicroAgent:
     # 以下是外部方法
     ###########################
 
-    def register_agent(self, *, name: str, agent: "MicroAgent"):
+    def register_agent(self, *, name: str, agent: "WeeAgent"):
         """
         注册一个其他MyAgent类，以便在对话中调用其他agent的服务。
         注意：注册后，还需要在当前agent提示词中维护对应的调用方法。
@@ -510,7 +510,7 @@ class MicroAgent:
         :return: None
         """
         # 测试对象是否是MicroAgent的
-        if not isinstance(agent, MicroAgent):
+        if not isinstance(agent, WeeAgent):
             raise TypeError("注册的agent必须是MicroAgent的子类对象！")
 
         # 测试是否已经有同名的方法或属性

@@ -1,13 +1,13 @@
 """测试用户界面装饰器"""
 import unittest
 
-from micro_agent import MicroAgent
-from micro_agent.decorators import user_interface
+from wee_agent import WeeAgent
+from wee_agent.decorators import user_interface
 
 
 # 测试类
 @user_interface
-class TestUserInterfaceAgent(MicroAgent):
+class TestUserInterfaceAgent(WeeAgent):
     pass
 
 

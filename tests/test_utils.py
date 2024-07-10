@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from micro_agent.core.utils import num_tokens_from_messages, \
+from wee_agent.core.utils import num_tokens_from_messages, \
     create_jsonschema_from_example, validate_json, extract_json, get_image_encoding
 
 messages = [

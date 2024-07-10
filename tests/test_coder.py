@@ -1,5 +1,5 @@
-from micro_agent.agents.coder import Coder
-from micro_agent.agents.python_code_executor import CodeExecutor
+from wee_agent.agents.coder import Coder
+from wee_agent.agents.python_code_executor import CodeExecutor
 
 require_text = """
 本函数的功能是：获取指定时间当周开始和结束的时间戳。

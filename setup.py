@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='micro_agent',
+    name='wee_agent',
     version='0.1.0',
     description='A micro agent for open_ai llm model',
     long_description=open('README.md').read(),

@@ -1,8 +1,8 @@
 """一个生成python代码的智能体"""
 import logging
 
-from micro_agent import MicroAgent
-from micro_agent.agents.python_code_executor import CodeExecutor
+from wee_agent import WeeAgent
+from wee_agent.agents.python_code_executor import CodeExecutor
 
 logging.basicConfig(level=logging.INFO)
 
@@ -47,7 +47,7 @@ Workflows:
 """
 
 
-class Coder(MicroAgent):
+class Coder(WeeAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.prompt = prompt
