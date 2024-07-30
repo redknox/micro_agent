@@ -171,7 +171,7 @@ def merge(base_model_1: BaseModel, base_model_2: BaseModel) -> BaseModel:
         raise e
 
 
-def num_tokens_from_messages(messages: list, model="pgt-3.5-turbo-0613"):
+def num_tokens_from_messages(messages: list, model="gpt-3.5-turbo-0613"):
     """Returns the number of tokens used by a list of messages."""
     try:
         encoding = tiktoken.encoding_for_model(model)
@@ -196,9 +196,11 @@ def num_tokens_from_messages(messages: list, model="pgt-3.5-turbo-0613"):
     elif "gpt-4" in model:
         return num_tokens_from_messages(messages, model="gpt-4-0613")
     else:
-        raise NotImplementedError(
-            f"Model {model} not supported for token counting."
-        )
+        tokens_per_message = 3
+        tokens_per_name = 1
+    #     raise NotImplementedError(
+    #         f"Model {model} not supported for token counting."
+    #     )
     num_tokens = 0
     for message in messages:
         num_tokens += tokens_per_message

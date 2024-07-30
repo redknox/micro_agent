@@ -5,6 +5,38 @@ from wee_agent import WeeAgent
 
 
 class MyTestCase(unittest.TestCase):
+
+    def test_daily_todo(self):
+        # 测试让llama.1 生成每日待办
+        test_agent = WeeAgent(
+            name='test_agent',
+            model='llama3.1',
+            base_url='http://10.60.84.212:11434/v1',
+            stream=False,
+            content_length=4096,
+
+        )
+        test_agent.response_format = 'json_object'
+        prompt = "你是一名文档分析师，能够敏锐的从与我的对话中，提取生成待办事项。再与我确认后，生成json格式的待办事项。例如：我说：我今天得完成一个文档分析报告，你生成如下待办事项：{'title':'文档分析报告','content':'今天完成文档分析报告'}。"
+
+        test_agent.prompt = prompt
+
+        while True:
+            my_word = input("请输入：")
+            print(test_agent(my_word))
+
+    def test_update(self):
+        test_agent = WeeAgent(
+            model="llama3.1",
+            content_length=4096,
+            base_url='http://10.60.84.212:11434/v1',
+            stream=False,
+        )
+        test_agent.temperature = 0
+        print(test_agent)
+        print(test_agent('hi！'))
+        print(test_agent.history_messages)
+
     # 测试gpt4v
     def test_image(self):
         test_agent = WeeAgent(
