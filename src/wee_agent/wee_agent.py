@@ -15,7 +15,7 @@ from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
-from wee_agent.utils import image_to_base64
+from wee_agent.utils import image_to_base64, num_tokens_from_messages
 from wee_agent.config import MAX_TOKEN_LENGTH, DEFAULT_MODEL, GREEN, \
     RESET, RETRY
 from wee_agent.errors import AgentExecToolError, RegisterToolError
@@ -50,7 +50,8 @@ class WeeAgent:
                  user_name: str = "user",
                  prompt: str = "You are a helpful assistant.",
                  model: str = DEFAULT_MODEL,
-                 host: str = None,
+                 base_url: str = None,
+                 content_length=0,
                  input_token_ratio: float = 0.9,
                  need_user_input: bool = False,
                  max_round: int = 10,
@@ -63,7 +64,8 @@ class WeeAgent:
         :param user_name: 用户的名称，用于构造消息，使用同一个用户名称有助于openAI更好的理解对话
         :param prompt: 提示词，用于构造消息，也就是系统消息
         :param model: 所使用的模型名称
-        :param host: openai服务，或者其他支持openai的格式的大模型服务
+        :param base_url: openai服务代理，或者其他支持openai的格式的大模型服务
+        :param content_length: 模型的上下文长度，如果模型不支持，需要在初始化时传入。默认为0。
         :param input_token_ratio: 输入token占总token窗口总长度的比例，默认为0.9。输入token占总token窗口的比例越大，保持上下文的长度就越长，但是也会导致openAI回复的内容变少。
         :param need_user_input: 是否需要用户介入对话，需要向用户提问，以获取额外信息时，设置为True。默认为False。
         :param max_round: 最大对话轮数，默认为10轮。如果为0，则表示无限对话，直到用户主动结束对话或超出最大对话窗口长度被裁剪。1round为用户发起一个问题得到一个回复。如果中间涉及到tool调用，则也算一轮。
@@ -72,7 +74,15 @@ class WeeAgent:
         """
         self.completion = Completion(messages=[], model=model)
         if model not in MAX_TOKEN_LENGTH:
-            raise AgentExecToolError(f"不支持的模型名称：{model}")
+            if content_length == 0 or not isinstance(content_length, int):
+                raise AgentExecToolError(
+                    f"请在初始化时输入模型 {model} 的上下文长度参数！")
+            if base_url is None:
+                raise AgentExecToolError(
+                    f"请在初始化时输入模型 {model} 的服务地址！")
+            self.content_length = content_length
+        else:
+            self.content_length = MAX_TOKEN_LENGTH[model]
 
         if stream:
             self.completion.stream = True
@@ -112,9 +122,8 @@ class WeeAgent:
 
         # 设置输入token的最大长度
         self.max_input_token: int = int(
-            MAX_TOKEN_LENGTH[self.model] * self.input_token_ratio)
-        self.max_output_token: int = MAX_TOKEN_LENGTH[
-                                         self.model] - self.max_input_token
+            self.content_length * self.input_token_ratio)
+        self.max_output_token: int = self.content_length - self.max_input_token
         logging.info(
             f"设置输入token的最大长度为：{self.max_input_token},输出token的最大长度为：{self.max_output_token}")
 
@@ -126,7 +135,7 @@ class WeeAgent:
         try:
             self.open_ai_client: OpenAI = OpenAI(
                 api_key=openai.api_key,
-                base_url=host
+                base_url=base_url,
             )
             logging.info("连接openAI服务成功！")
         except Exception as e:
@@ -163,7 +172,9 @@ class WeeAgent:
         MyAgent(name='{self.name}', 
         user_name='{self.user_name}', 
         prompt='{self.prompt}', 
+        base_url='{self.open_ai_client.base_url}',
         model='{self.model}', 
+        content_length={self.content_length},
         input_token_ratio={self.input_token_ratio}),
         max_input_token={self.max_input_token},
         max_output_token={self.max_output_token},
@@ -264,7 +275,7 @@ class WeeAgent:
         elif 'gpt-3' in value:
             self.completion.model = 'gpt-3.5-turbo'
         else:
-            raise ValueError(f"Invalid model name: {value}.")
+            self.completion.model = value
 
     @property
     def stream_options(self):
@@ -382,9 +393,16 @@ class WeeAgent:
                 return self.open_ai_client.chat.completions.create(
                     **self.completion.model_dump(exclude_defaults=True))
             # 需要报错并中断
+            except openai.BadRequestError as e:
+                if e.status_code == 400 and e.code == "context_length_exceeded":
+                    # 超过上下文窗口长度
+                    logging.error(f"超过上下文窗口长度！尝试缩小对话窗口！")
+                    self.trim_history()  # 裁剪历史消息后重试
+                    self.completion.messages = self._create_messages()  # 重置对话窗口
+                    continue
+
             except (
                     openai.APIConnectionError,
-                    openai.BadRequestError,
                     openai.AuthenticationError,
                     openai.NotFoundError,
                     openai.PermissionDeniedError,
@@ -421,6 +439,7 @@ class WeeAgent:
                     end='',
                     flush=True
                 )
+                # yield f'{GREEN}{trunk.choices[0].delta.content}{RESET}'
             response = merge(response, trunk)  # 将返回的一系列trunk合并成一个
         if response.choices[0].delta.content is not None:
             print()  # 输出换行
@@ -583,6 +602,7 @@ class WeeAgent:
         for item in range(self.message_windows["head"] + 1,
                           self.message_windows["tail"]):
 
+            print(self.history_messages[item])
             if self.history_messages[item].role == "user":
                 self.message_windows["head"] = item
                 self.message_window_round_count -= 1  # 当前消息窗口对话轮数减一
@@ -687,16 +707,17 @@ class WeeAgent:
             if self.completion.stream:
                 response = self._merge_and_display_stream_chunks(response)
             # 记录token消耗信息
-            self.last_prompt_tokens = response.usage.prompt_tokens  # 最后回复的token数
-            self.last_question_tokens = response.usage.completion_tokens - self.last_total_tokens  # 计算最后一条问题的token数
-            self.last_total_tokens = response.usage.total_tokens  # 计算总token数
+            if response.usage:
+                self.last_prompt_tokens = response.usage.prompt_tokens  # 最后回复的token数
+                self.last_question_tokens = response.usage.completion_tokens - self.last_total_tokens  # 计算最后一条问题的token数
+                self.last_total_tokens = response.usage.total_tokens  # 计算总token数
 
-            # 如果返回的token消耗超过了限制，则裁剪一条历史消息
-            # 虽然有可能裁剪后prompt_token数还是超限，但最少腾出了一轮对话的空间。
-            # 所以，当你期待llm产生大量回复时，要小心规划prompt_token的比例关系
-            if hasattr(response,
-                       'usage') and response.usage.total_tokens > self.max_input_token:
-                self.trim_history(reset=False)
+                # 如果返回的token消耗超过了限制，则裁剪一条历史消息
+                # 虽然有可能裁剪后prompt_token数还是超限，但最少腾出了一轮对话的空间。
+                # 所以，当你期待llm产生大量回复时，要小心规划prompt_token的比例关系
+                if MAX_TOKEN_LENGTH and hasattr(response,
+                                                'usage') and response.usage.total_tokens > self.max_input_token:
+                    self.trim_history(reset=False)
 
             # 如果设置了最大对话窗口轮次，则根据窗口轮次进行裁剪
             # 注意：如果llm返回的stop_reason为tool，或者说tool调用轮次不受窗口最大窗口轮次影响

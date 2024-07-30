@@ -22,7 +22,6 @@ class Completion(BaseModel):
             type: Literal['text']
 
         class ImageContent(BaseModel):
-            # todo: 使用ImageContent时，只能使用gpt-4-visual-preview等特定模型才可以
             class ImageUrl(BaseModel):
                 url: str
                 detail: Literal['auto', 'high', 'low']
