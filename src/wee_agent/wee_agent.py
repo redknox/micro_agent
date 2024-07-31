@@ -93,7 +93,7 @@ class WeeAgent:
         logging.info(f"设置使用的模型：{self.model}")
         self.model: str = model  # 设置使用的模型
         self.name: str = generate_random_name() if not name else name  # 代理的名称,如果没传入则随机生成一个
-        self.user_name: str = user_name
+        self.user_name: str = generate_random_name() if not user_name else user_name  # 用户的名称,如果没传入则随机生成一个
         self.prompt: str = prompt
 
         self.history_messages: List[
@@ -354,7 +354,7 @@ class WeeAgent:
         :raises ValueError: 如果role不在预期范围内或者当role为"tool"但没有提供
         `tool_call_id`时抛出。
         """
-
+        print("----->", role, content, tool_call_id, name)
         # 确保role值有效
         if role not in ["user", "system", "tool"]:
             raise ValueError(
@@ -391,7 +391,8 @@ class WeeAgent:
         while attempt < self.max_retry_times:
             try:
                 return self.open_ai_client.chat.completions.create(
-                    **self.completion.model_dump(exclude_defaults=True))
+                    **self.completion.model_dump(exclude_defaults=True,
+                                                 exclude_none=True))
             # 需要报错并中断
             except openai.BadRequestError as e:
                 if e.status_code == 400 and e.code == "context_length_exceeded":
@@ -632,7 +633,7 @@ class WeeAgent:
         :param content: 用户输入的信息。
         :return: 无
         """
-        self._push_message(self._create_message('user', content,
+        self._push_message(self._create_message('user', content, None,
                                                 name if name else self.user_name))
 
     def user_image_input(

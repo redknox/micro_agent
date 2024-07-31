@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: wee_agent
-Version: 0.1.0
+Version: 0.1.1
 Summary: A micro agent for open_ai llm model
 Author: Haifeng Kong
 Author-email: redknox@gmail.com
@@ -193,3 +193,9 @@ print(agent("请告诉我现在的时间"))
     * 必须以:param 开头，
     * 返回值必须使用:return 开头。
 3. 函数的返回值必须为文本格式，以便于大模型理解。目前不支持使用其他格式。
+
+----
+
+## 下一步计划
+
+因为目前openAI的api格式几乎成为了大模型调用的标杆，修改本模块，让它可以支持其他开源模型，例如Ollama、vllm等。

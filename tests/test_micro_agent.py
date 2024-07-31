@@ -6,6 +6,16 @@ from wee_agent import WeeAgent
 
 class MyTestCase(unittest.TestCase):
 
+    def test_something(self):
+        logging.basicConfig(level=logging.INFO)
+        test_agent = WeeAgent(
+            name='test_agent',
+            model='/data/autodl-tmp/Qwen/Qwen2-7B-Instruct-GPTQ-Int4',
+            base_url='https://privatellm.cmcm.com/v1',
+            content_length=4096,
+        )
+        print(test_agent('hi！'))
+
     def test_daily_todo(self):
         # 测试让llama.1 生成每日待办
         test_agent = WeeAgent(
@@ -27,9 +37,11 @@ class MyTestCase(unittest.TestCase):
 
     def test_update(self):
         test_agent = WeeAgent(
-            model="llama3.1",
+            # model="llama3.1",
+            model="/data/autodl-tmp/Qwen/Qwen2-7B-Instruct-GPTQ-Int4",
             content_length=4096,
-            base_url='http://10.60.84.212:11434/v1',
+            # base_url='http://10.60.84.212:11434/v1',
+            base_url="https://privatellm.cmcm.com/v1",
             stream=False,
         )
         test_agent.temperature = 0
