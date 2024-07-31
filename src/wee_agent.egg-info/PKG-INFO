@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: wee_agent
-Version: 0.1.1
+Version: 0.1.2
 Summary: A micro agent for open_ai llm model
 Author: Haifeng Kong
 Author-email: redknox@gmail.com

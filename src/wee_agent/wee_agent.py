@@ -354,7 +354,6 @@ class WeeAgent:
         :raises ValueError: 如果role不在预期范围内或者当role为"tool"但没有提供
         `tool_call_id`时抛出。
         """
-        print("----->", role, content, tool_call_id, name)
         # 确保role值有效
         if role not in ["user", "system", "tool"]:
             raise ValueError(
@@ -590,7 +589,6 @@ class WeeAgent:
         将消息窗口的起点移动到下一个用户消息。缩小消息窗口的范围。如果reset为True，则
         将消息窗口的起点移动到头部。用户更换话题。
         注意：多智体对话时，可能会存在多个用户消息，后才有1个系统消息的情况。
-        :todo 将消息窗口的大小裁剪到小于等于分配的token窗口比例。
         :param number: 缩小的对话轮数，默认为缩小1轮
         :param reset: 是否重置消息窗口,为True时，清空整个消息窗口
         :return:
@@ -603,7 +601,6 @@ class WeeAgent:
         for item in range(self.message_windows["head"] + 1,
                           self.message_windows["tail"]):
 
-            print(self.history_messages[item])
             if self.history_messages[item].role == "user":
                 self.message_windows["head"] = item
                 self.message_window_round_count -= 1  # 当前消息窗口对话轮数减一
